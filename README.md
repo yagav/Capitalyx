@@ -89,14 +89,14 @@ cd CapitalYX
 flutter pub get
 ```
 
-##Configure Environment Variables
+## Configure Environment Variables
 ```bash
 SUPABASE_URL=your_supabase_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
 GOOGLE_TRANSLATE_API_KEY=your_api_key
 ```
 
-##Run the Application
+## Run the Application
 ```bash
 flutter run
 ```
