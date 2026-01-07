@@ -12,6 +12,7 @@ import 'package:startup_application/presentation/widgets/translated_text.dart';
 import 'package:startup_application/injection_container.dart' as di;
 import 'package:startup_application/domain/repositories/query_repository.dart';
 import 'package:startup_application/presentation/providers/language_provider.dart';
+import 'package:startup_application/core/services/glossary_service.dart';
 import 'package:startup_application/core/services/voice_service.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -21,10 +22,13 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with SingleTickerProviderStateMixin {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final FocusNode _inputFocusNode = FocusNode();
   final TextEditingController _textController = TextEditingController();
+  final GlossaryService _glossaryService = GlossaryService();
+
   bool _isInputMode = false;
   bool _isDrawerOpen = false;
 
@@ -32,12 +36,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final VoiceService _voiceService = VoiceService();
   bool _isRecording = false;
 
+  // Animation
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+
   @override
   void initState() {
     super.initState();
     _inputFocusNode.addListener(_onFocusChange);
     // Check permissions early
     _voiceService.hasPermission();
+
+    // Pulsing Animation
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..repeat(reverse: true);
+
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
   }
 
   @override
@@ -46,6 +64,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _inputFocusNode.dispose();
     _textController.dispose();
     _voiceService.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -62,78 +81,69 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final path = await _voiceService.stopRecording();
 
       if (path != null) {
-        // Show processing state?
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: TranslatedText('Processing voice command...')),
-        );
-
-        final currentLangState = ref.read(languageProvider);
-        final currentLang = currentLangState.code;
-
-        // 1. STT
-        final transcript = await _voiceService.transcribe(path, currentLang);
-
-        if (transcript != null && transcript.isNotEmpty) {
-          _textController.text = transcript; // Show in text box
-
-          // 2. Translate to English for "Intent" / AI processing
-          // For now, we assume the AI processes the raw or english.
-          // The prompt says: "Translate the Hindi... to English using TranslationService".
-          // We can use GlossaryService's translate logic (which is LanguageProvider basically) but simpler.
-          // Accessing GlossaryService directly or via provider.
-          // Since LanguageProvider manages "To Local", we might need "To English".
-          // Let's use GlossaryService directly here or a new method.
-          // Re-using GlossaryService instance from provider is tricky if not exposed.
-          // We'll instantiate one or adding to VoiceService was better.
-          // Implementation Plan said: "Translate using GlossaryService logic (or direct API call)".
-          // For now, let's assume transcript is user query.
-
-          // Save processed query
-          await di
-              .sl<QueryRepository>()
-              .saveProcessedQuery(transcript, currentLang);
-
-          // 3. Audio Feedback
-          // "Please wait, your query is being processed."
-          String feedbackParams = "Please wait, your query is being processed.";
-          // Translate this feedback to user's language
-          // We can use the existing translations map if we added it to AppStrings,
-          // OR translate on fly.
-          // Let's translate on fly using VoiceService/GlossaryService logic?
-          // Simpler: Just speak the localized version if available or the english one.
-          // Ideally we should translate `feedbackParams` to `currentLang`.
-          // For MVP, we can try to find it in our `LanguageState` if we added it to `AppStrings`.
-          // It wasn't in AppStrings initially.
-          // Let's use English fallback or rely on STT result as feedback? No, prompt specific.
-
-          // Trigger TTS
-          await _voiceService.speak(
-              feedbackParams, currentLang); // speak does TTS.
-          // Note: speak method in VoiceService sends text to Google TTS. Google TTS can speak "Please wait..." in Tamil?
-          // Yes, if we send English text to Tamil voice it might sound weird or fail.
-          // We SHOULD translate the text first.
-          // Since we didn't inject GlossaryService, let's skip on-fly translation for this specific string
-          // unless we want to instantiate GlossaryService again.
-          // The prompt says: "Translate this template into the user’s selectedLanguageCode."
-          // I will skip proper translation logic here for speed and just speak it,
-          // or assume it's English for English users.
-          // Actually, let's implement the translation call properly if I can access GlossaryService.
-          // But I can't easily without editing dependency injection or service.
-          // I'll stick to English TTS for non-English for this step to demonstrate pipeline
-          // OR better: hardcode the translated string for a few langs if I knew them, but I don't.
-          // I will assume the user accepts English feedback for now or the API handles it (it won't).
-        }
+        await _processVoiceQuery(path);
       }
     } else {
       // START RECORDING
       if (await _voiceService.hasPermission()) {
         await _voiceService.startRecording();
         setState(() => _isRecording = true);
-      } else {
-        // Request again?
-        // Permission handled in startRecording mostly or check status
       }
+    }
+  }
+
+  Future<void> _processVoiceQuery(String audioPath) async {
+    final currentLangState = ref.read(languageProvider);
+    final currentLang = currentLangState.code;
+
+    // Show processing snackbar
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: TranslatedText('Processing voice command...')),
+    );
+
+    try {
+      // Step 1: STT
+      final transcript = await _voiceService.transcribe(audioPath, currentLang);
+
+      if (transcript == null || transcript.isEmpty) {
+        // Error Handling: Play "Sorry..."
+        _playLocalizedFeedback(
+            "Sorry, I couldn't hear that. Please try again.", currentLang);
+        return;
+      }
+
+      // Update UI with transcript
+      setState(() {
+        _textController.text = transcript;
+      });
+
+      // Step 2 & 3: Parallel Execution
+      // A. Play Feedback (Fire-and-forget)
+      _playLocalizedFeedback(
+          "Please wait, your query is being processed.", currentLang);
+
+      // B. Save to DB (Translation handled inside saveProcessedQuery)
+      await di
+          .sl<QueryRepository>()
+          .saveProcessedQuery(transcript, currentLang);
+
+      // Auto-submit interaction if needed or just leave in text box?
+      // "Input Focus logic" implies we might want to submit.
+      // But prompt says "Insert the result...", implies done.
+      // Text box update is nice for feedback.
+    } catch (e) {
+      print("Error processing voice query: $e");
+    }
+  }
+
+  // Helper to translate and speak feedback
+  void _playLocalizedFeedback(String message, String langCode) async {
+    try {
+      final translated = await _glossaryService.translate(message, langCode);
+      // Fire and forget speech
+      _voiceService.speak(translated, langCode);
+    } catch (e) {
+      print("TTS Feedback Error: $e");
     }
   }
 
@@ -209,19 +219,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     // If recording, we want to show Waveform INSTEAD of these widgets.
                     child: _isRecording
                         ? Center(
-                            child: Container(
-                              height: 100,
-                              width: 100,
-                              decoration: BoxDecoration(
-                                color: secondaryColor.withValues(alpha: 0.2),
-                                shape: BoxShape.circle,
+                            child: ScaleTransition(
+                              scale: _pulseAnimation,
+                              child: Container(
+                                height: 120,
+                                width: 120,
+                                decoration: BoxDecoration(
+                                  color: secondaryColor.withValues(alpha: 0.2),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                      color:
+                                          secondaryColor.withValues(alpha: 0.5),
+                                      width: 2),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color:
+                                          secondaryColor.withValues(alpha: 0.3),
+                                      blurRadius: 20,
+                                      spreadRadius: 5,
+                                    )
+                                  ],
+                                ),
+                                child: Center(
+                                  child: Icon(Icons.graphic_eq,
+                                      size: 50, color: secondaryColor),
+                                ),
                               ),
-                              child: const Icon(Icons.graphic_eq,
-                                  size: 50, color: Colors.white),
-                              // Using static icon as placeholder for waveform as per quick implementation
-                              // "Pulsing Waveform Animation" requested.
-                              // I can assume a Lottie or generic Pulse here?
-                              // Simple ScaleTransition or just text "Listening..." for now.
                             ),
                           )
                         : Column(
