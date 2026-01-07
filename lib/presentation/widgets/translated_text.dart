@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:startup_application/core/services/glossary_service.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:startup_application/presentation/providers/language_provider.dart';
 
-// Simple cache to avoid repeated API calls for the same session
-final Map<String, Map<String, String>> _translationCache = {};
-
-class TranslatedText extends ConsumerStatefulWidget {
+class TranslatedText extends ConsumerWidget {
   final String text;
   final TextStyle? style;
   final TextAlign? textAlign;
@@ -23,65 +20,45 @@ class TranslatedText extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<TranslatedText> createState() => _TranslatedTextState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final languageState = ref.watch(languageProvider);
 
-class _TranslatedTextState extends ConsumerState<TranslatedText> {
-  final GlossaryService _glossaryService =
-      GlossaryService(); // Could be injected
+    String displayText = text;
+    bool showShimmer = false;
 
-  @override
-  void didUpdateWidget(TranslatedText oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Cache invalidation logic if needed, but for now we just rely on the future rebuilding
-  }
+    if (languageState.code != 'en') {
+      final translated = languageState.translations[text];
+      if (translated != null) {
+        displayText = translated;
+      } else if (languageState.isLoading) {
+        showShimmer = true;
+      } else {
+        // Not found and not loading? Fallback to original
+        // Could technically try to translate on the fly if we supported dynamic strings
+        // But for this scope we rely on the batch load.
+      }
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    final currentLang = ref.watch(languageProvider);
-
-    if (currentLang == 'en') {
-      return Text(
-        widget.text,
-        style: widget.style,
-        textAlign: widget.textAlign,
-        maxLines: widget.maxLines,
-        overflow: widget.overflow,
+    if (showShimmer) {
+      return Shimmer.fromColors(
+        baseColor: (style?.color ?? Colors.white).withValues(alpha: 0.3),
+        highlightColor: (style?.color ?? Colors.white).withValues(alpha: 0.1),
+        child: Text(
+          text,
+          style: style,
+          textAlign: textAlign,
+          maxLines: maxLines,
+          overflow: overflow,
+        ),
       );
     }
 
-    return FutureBuilder<String>(
-      future: _translate(widget.text, currentLang),
-      builder: (context, snapshot) {
-        final displayText = snapshot.data ?? widget.text;
-
-        // While loading, we show the original text (or a shimmer/placeholder if preferred)
-        // Using original text avoids layout shift usually better.
-
-        return Text(
-          displayText,
-          style: widget.style,
-          textAlign: widget.textAlign,
-          maxLines: widget.maxLines,
-          overflow: widget.overflow,
-        );
-      },
+    return Text(
+      displayText,
+      style: style,
+      textAlign: textAlign,
+      maxLines: maxLines,
+      overflow: overflow,
     );
-  }
-
-  Future<String> _translate(String text, String lang) async {
-    if (_translationCache.containsKey(lang) &&
-        _translationCache[lang]!.containsKey(text)) {
-      return _translationCache[lang]![text]!;
-    }
-
-    final result = await _glossaryService.translate(text, lang);
-
-    if (!_translationCache.containsKey(lang)) {
-      _translationCache[lang] = {};
-    }
-    _translationCache[lang]![text] = result;
-
-    return result;
   }
 }

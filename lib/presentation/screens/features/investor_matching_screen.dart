@@ -4,6 +4,8 @@ import 'package:startup_application/core/theme/app_theme.dart';
 import 'package:startup_application/presentation/controllers/feature_controller.dart';
 import 'package:startup_application/presentation/providers/auth_provider.dart';
 import 'package:startup_application/presentation/widgets/language_selector.dart';
+import 'package:startup_application/presentation/widgets/translated_text.dart';
+import 'package:startup_application/presentation/providers/language_provider.dart';
 
 class InvestorMatchingScreen extends ConsumerStatefulWidget {
   const InvestorMatchingScreen({super.key});
@@ -103,7 +105,7 @@ class _InvestorMatchingScreenState
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text('Investor Matching',
+        title: const TranslatedText('Investor Matching',
             style: TextStyle(color: Colors.white)),
         actions: const [
           LanguageSelector(),
@@ -167,7 +169,7 @@ class _InvestorMatchingScreenState
                           foregroundColor: Colors.white,
                         ),
                         onPressed: _submit,
-                        child: const Text('Find Matches',
+                        child: const TranslatedText('Find Matches',
                             style: TextStyle(fontSize: 16)),
                       ),
                     ),
@@ -186,29 +188,52 @@ class _InvestorMatchingScreenState
     int lines = 1,
     bool isOptional = false,
   }) {
+    // If label contains (Optional), we handle it in _inputDecoration via isOptional flag or strip it?
+    // The prompt says: "For fields like ... update the InputDecoration to show the text (Optional) inside the hintData."
+    // In strict sense, I should pass the base label and let optional handling add the hint.
+    // The label passed here is "Brief Description (Optional)". I should probably pass "Brief Description" and isOptional: true.
+    // But for safety/minimal refactor I can just rely on the passed label if I didn't change the call sites.
+    // However, I must strip "(Optional)" from label if I want to put it in hint.
+    String cleanLabel = label.replaceAll('(Optional)', '').trim();
+
     return TextFormField(
       controller: controller,
       keyboardType: type,
       maxLines: lines,
       style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
-        enabledBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: color),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.05),
-      ),
+      decoration: _inputDecoration(cleanLabel, color, isOptional: isOptional),
       validator: (value) {
         if (isOptional) return null;
         return value?.isEmpty ?? true ? 'Required' : null;
       },
+    );
+  }
+
+  InputDecoration _inputDecoration(String label, Color color,
+      {bool isOptional = false}) {
+    final languageState = ref.watch(languageProvider);
+    final translatedLabel = languageState.translations[label] ?? label;
+
+    String? hintText;
+    if (isOptional) {
+      hintText = languageState.translations['(Optional)'] ?? '(Optional)';
+    }
+
+    return InputDecoration(
+      labelText: translatedLabel,
+      hintText: hintText,
+      floatingLabelBehavior: isOptional ? FloatingLabelBehavior.always : null,
+      labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
+      enabledBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: color),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      filled: true,
+      fillColor: Colors.white.withValues(alpha: 0.05),
     );
   }
 
@@ -223,22 +248,10 @@ class _InvestorMatchingScreenState
       value: value,
       dropdownColor: const Color(0xFF1E1E1E),
       style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
-        enabledBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: color),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.05),
-      ),
-      items:
-          items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+      decoration: _inputDecoration(label, color),
+      items: items
+          .map((e) => DropdownMenuItem(value: e, child: TranslatedText(e)))
+          .toList(),
       onChanged: onChanged,
       validator: (value) => value == null ? 'Required' : null,
     );

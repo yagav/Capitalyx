@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:startup_application/core/theme/app_theme.dart';
 import 'package:startup_application/presentation/controllers/feature_controller.dart';
 import 'package:startup_application/presentation/providers/auth_provider.dart';
+import 'package:startup_application/presentation/widgets/language_selector.dart';
+import 'package:startup_application/presentation/widgets/translated_text.dart';
 import 'package:startup_application/presentation/providers/language_provider.dart';
 
 class PitchDeckAnalyzerScreen extends ConsumerStatefulWidget {
@@ -96,6 +98,8 @@ class _PitchDeckAnalyzerScreenState
     final authState = ref.watch(authProvider);
     final sector = authState.profile?.startupSector ?? 'Other';
     final secondaryColor = AppTheme.getSecondaryColorForSector(sector);
+    // Access language state for dynamic string lookup inside build
+    // Note: for SnackBar we need to look it up at event time.
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
@@ -106,15 +110,11 @@ class _PitchDeckAnalyzerScreenState
             icon: const Icon(Icons.arrow_back, color: Colors.white),
             onPressed: () => Navigator.of(context).pop(),
           ),
-          title: const Text('Pitch Deck Analyzer',
+          title: const TranslatedText('Pitch Deck Analyzer',
               style: TextStyle(color: Colors.white)),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.language, color: Colors.white),
-              onPressed: () {
-                ref.read(languageProvider.notifier).setLanguage('en');
-              },
-            ),
+          actions: const [
+            LanguageSelector(), // Use common selector
+            SizedBox(width: 8),
           ]),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: secondaryColor))
@@ -152,13 +152,21 @@ class _PitchDeckAnalyzerScreenState
                                 : Colors.white.withValues(alpha: 0.5),
                           ),
                           const SizedBox(height: 16),
-                          Text(
-                            _fileName ?? 'Tap to upload PDF or PPT',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
-                              fontSize: 16,
-                            ),
-                          ),
+                          _selectedFile != null
+                              ? Text(
+                                  _fileName!,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                    fontSize: 16,
+                                  ),
+                                )
+                              : TranslatedText(
+                                  'Tap to upload PDF or PPT',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                    fontSize: 16,
+                                  ),
+                                ),
                         ],
                       ),
                     ),
@@ -173,7 +181,8 @@ class _PitchDeckAnalyzerScreenState
                     decoration: _inputDecoration(
                         'Target Funding Stage', secondaryColor),
                     items: _stages
-                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                        .map((e) => DropdownMenuItem(
+                            value: e, child: TranslatedText(e)))
                         .toList(),
                     onChanged: (v) => setState(() => _targetStage = v!),
                   ),
@@ -185,7 +194,8 @@ class _PitchDeckAnalyzerScreenState
                     decoration:
                         _inputDecoration('Investor Type', secondaryColor),
                     items: _investorTypes
-                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                        .map((e) => DropdownMenuItem(
+                            value: e, child: TranslatedText(e)))
                         .toList(),
                     onChanged: (v) => setState(() => _investorType = v!),
                   ),
@@ -202,7 +212,7 @@ class _PitchDeckAnalyzerScreenState
                             borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: _submit,
-                      child: const Text('Start Analysis',
+                      child: const TranslatedText('Start Analysis',
                           style: TextStyle(
                               fontSize: 18, fontWeight: FontWeight.bold)),
                     ),
@@ -214,8 +224,11 @@ class _PitchDeckAnalyzerScreenState
   }
 
   InputDecoration _inputDecoration(String label, Color color) {
+    final languageState = ref.watch(languageProvider);
+    final translatedLabel = languageState.translations[label] ?? label;
+
     return InputDecoration(
-      labelText: label,
+      labelText: translatedLabel,
       labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
       enabledBorder: OutlineInputBorder(
         borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),

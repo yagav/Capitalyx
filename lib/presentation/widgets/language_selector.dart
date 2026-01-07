@@ -15,7 +15,7 @@ class LanguageSelector extends ConsumerWidget {
     final currentLang = ref.watch(languageProvider);
 
     return PopupMenuButton<String>(
-      initialValue: currentLang,
+      initialValue: currentLang.code,
       icon: Icon(Icons.language, color: color),
       tooltip: 'Select Language',
       onSelected: (String code) {

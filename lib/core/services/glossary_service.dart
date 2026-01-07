@@ -37,17 +37,21 @@ class GlossaryService {
     return protectedText;
   }
 
-  /// Translates text using Google Translate API while preserving glossary terms.
-  Future<String> translate(String text, String targetLang) async {
-    if (targetLang == 'en') return text;
+  /// Translates a list of strings using Google Translate API while preserving glossary terms.
+  Future<Map<String, String>> translateBatch(
+      List<String> texts, String targetLang) async {
+    if (targetLang == 'en') {
+      return {for (var t in texts) t: t};
+    }
 
     final apiKey = dotenv.env['GOOGLE_TRANSLATE_API_KEY'];
     if (apiKey == null || apiKey.isEmpty) {
       print('Warning: GOOGLE_TRANSLATE_API_KEY not found.');
-      return "$text [MISSING KEY]"; // Fallback with visual indicator
+      return {for (var t in texts) t: "$t [MISSING KEY]"};
     }
 
-    final protectedText = protectTerms(text);
+    // Protect terms in all texts
+    final protectedTexts = texts.map((t) => protectTerms(t)).toList();
 
     final url = Uri.parse(
         'https://translation.googleapis.com/language/translate/v2?key=$apiKey');
@@ -55,30 +59,41 @@ class GlossaryService {
     try {
       final response = await http.post(
         url,
-        body: {
-          'q': protectedText,
-          'target': targetLang,
-          'format': 'html', // Important for span tags
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
         },
+        body: jsonEncode({
+          'q': protectedTexts,
+          'target': targetLang,
+          'format': 'html',
+        }),
       );
 
       if (response.statusCode == 200) {
         final jsonResponse = json.decode(response.body);
-        final translatedHtml =
-            jsonResponse['data']['translations'][0]['translatedText'];
+        final translations = jsonResponse['data']['translations'] as List;
 
-        // Strip the span tags for display, or keep them if styling requires.
-        // For standard Text widgets, we likely want to remove the tags but keep the content.
-        // RegEx to remove <span translate="no"> and </span> but keep content.
-        return _stripProtectionTags(translatedHtml);
+        final Map<String, String> resultMap = {};
+        for (int i = 0; i < texts.length; i++) {
+          final translatedHtml = translations[i]['translatedText'];
+          resultMap[texts[i]] = _stripProtectionTags(translatedHtml);
+        }
+        return resultMap;
       } else {
-        print('Translation Error: ${response.statusCode} - ${response.body}');
-        return "$text [Err: ${response.statusCode}]";
+        print(
+            'Batch Translation Error: ${response.statusCode} - ${response.body}');
+        return {for (var t in texts) t: "$t [Err]"};
       }
     } catch (e) {
-      print('Translation Exception: $e');
-      return "$text [Exc]";
+      print('Batch Translation Exception: $e');
+      return {for (var t in texts) t: "$t [Exc]"};
     }
+  }
+
+  /// Translates text using Google Translate API while preserving glossary terms.
+  Future<String> translate(String text, String targetLang) async {
+    final map = await translateBatch([text], targetLang);
+    return map[text] ?? text;
   }
 
   String _stripProtectionTags(String html) {
@@ -100,7 +115,8 @@ class GlossaryService {
         .replaceAll('&apos;', "'")
         .replaceAll('&amp;', '&')
         .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>');
+        .replaceAll('&gt;', '>')
+        .replaceAll('&#39;', "'");
 
     return result;
   }

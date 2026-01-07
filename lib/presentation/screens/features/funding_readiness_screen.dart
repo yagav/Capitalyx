@@ -4,6 +4,8 @@ import 'package:startup_application/core/theme/app_theme.dart';
 import 'package:startup_application/presentation/controllers/feature_controller.dart';
 import 'package:startup_application/presentation/providers/auth_provider.dart';
 import 'package:startup_application/presentation/widgets/language_selector.dart';
+import 'package:startup_application/presentation/widgets/translated_text.dart';
+import 'package:startup_application/presentation/providers/language_provider.dart';
 
 class FundingReadinessScreen extends ConsumerStatefulWidget {
   const FundingReadinessScreen({super.key});
@@ -104,6 +106,7 @@ class _FundingReadinessScreenState
     final authState = ref.watch(authProvider);
     final sector = authState.profile?.startupSector ?? 'Other';
     final secondaryColor = AppTheme.getSecondaryColorForSector(sector);
+    final languageState = ref.watch(languageProvider);
 
     final theme = Theme.of(context).copyWith(
       colorScheme: ColorScheme.dark(primary: secondaryColor),
@@ -119,7 +122,7 @@ class _FundingReadinessScreenState
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text('Funding Readiness',
+        title: const TranslatedText('Funding Readiness',
             style: TextStyle(color: Colors.white)),
         actions: const [
           LanguageSelector(),
@@ -147,7 +150,7 @@ class _FundingReadinessScreenState
                 },
                 steps: [
                   Step(
-                    title: const Text('Team',
+                    title: const TranslatedText('Team',
                         style: TextStyle(color: Colors.white)),
                     content: Column(
                       children: [
@@ -168,18 +171,18 @@ class _FundingReadinessScreenState
                     isActive: _currentStep >= 0,
                   ),
                   Step(
-                    title: const Text('Product & Market',
+                    title: const TranslatedText('Product & Market',
                         style: TextStyle(color: Colors.white)),
                     content: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Product Stage',
+                        const TranslatedText('Product Stage',
                             style: TextStyle(color: Colors.white70)),
                         Row(
                           children: ['Idea', 'MVP', 'Live']
                               .map((val) => Expanded(
                                     child: RadioListTile<String>(
-                                      title: Text(val,
+                                      title: TranslatedText(val,
                                           style: const TextStyle(
                                               color: Colors.white)),
                                       value: val,
@@ -205,7 +208,7 @@ class _FundingReadinessScreenState
                     isActive: _currentStep >= 1,
                   ),
                   Step(
-                    title: const Text('Traction & Growth',
+                    title: const TranslatedText('Traction & Growth',
                         style: TextStyle(color: Colors.white)),
                     content: Column(
                       children: [
@@ -216,10 +219,12 @@ class _FundingReadinessScreenState
                             'Monthly Revenue (₹)',
                             _revenueController,
                             secondaryColor,
-                            TextInputType.number),
+                            TextInputType.number,
+                            1,
+                            true), // Optional
                         const SizedBox(height: 16),
                         SwitchListTile(
-                          title: const Text('Active pilots?',
+                          title: const TranslatedText('Active pilots?',
                               style: TextStyle(color: Colors.white)),
                           value: _hasPilots,
                           activeColor: secondaryColor,
@@ -228,13 +233,16 @@ class _FundingReadinessScreenState
                         const SizedBox(height: 16),
                         DropdownButtonFormField<String>(
                           value: _growthRate,
-                          decoration:
-                              _inputDecoration('Growth Rate', secondaryColor),
+                          decoration: _inputDecoration(
+                              'Growth Rate', secondaryColor,
+                              isOptional: true),
                           dropdownColor: const Color(0xFF1E1E1E),
                           style: const TextStyle(color: Colors.white),
                           items: _growthRateMap.keys
-                              .map((e) =>
-                                  DropdownMenuItem(value: e, child: Text(e)))
+                              .map((e) => DropdownMenuItem(
+                                  value: e,
+                                  child: TranslatedText(
+                                      e))) // Translate items? Yes
                               .toList(),
                           onChanged: (v) => setState(() => _growthRate = v!),
                         ),
@@ -243,7 +251,7 @@ class _FundingReadinessScreenState
                             _previousFundingController, secondaryColor),
                         const SizedBox(height: 16),
                         SwitchListTile(
-                          title: const Text('Key Partnerships?',
+                          title: const TranslatedText('Key Partnerships?',
                               style: TextStyle(color: Colors.white)),
                           value: _hasPartnerships,
                           activeColor: secondaryColor,
@@ -260,9 +268,24 @@ class _FundingReadinessScreenState
     );
   }
 
-  InputDecoration _inputDecoration(String label, Color color) {
+  InputDecoration _inputDecoration(String label, Color color,
+      {bool isOptional = false}) {
+    final languageState = ref.watch(languageProvider);
+
+    // Attempt translation
+    final translatedLabel = languageState.translations[label] ?? label;
+    String? hintText;
+
+    if (isOptional) {
+      hintText = languageState.translations['(Optional)'] ?? '(Optional)';
+    }
+
     return InputDecoration(
-      labelText: label,
+      labelText: translatedLabel,
+      hintText: hintText,
+      floatingLabelBehavior: isOptional
+          ? FloatingLabelBehavior.always
+          : null, // Optional enhancement
       labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
       enabledBorder: OutlineInputBorder(
         borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
@@ -283,13 +306,14 @@ class _FundingReadinessScreenState
     Color color, [
     TextInputType type = TextInputType.text,
     int lines = 1,
+    bool isOptional = false,
   ]) {
     return TextFormField(
       controller: controller,
       keyboardType: type,
       maxLines: lines,
       style: const TextStyle(color: Colors.white),
-      decoration: _inputDecoration(label, color),
+      decoration: _inputDecoration(label, color, isOptional: isOptional),
     );
   }
 }

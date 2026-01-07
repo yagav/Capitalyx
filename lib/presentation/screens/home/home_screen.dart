@@ -250,7 +250,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     await di
                                         .sl<QueryRepository>()
                                         .saveProcessedQuery(
-                                            value.trim(), currentLang);
+                                            value.trim(), currentLang.code);
                                     _textController.clear();
                                     _inputFocusNode.unfocus();
                                   }
@@ -286,7 +286,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     await di
                                         .sl<QueryRepository>()
                                         .saveProcessedQuery(
-                                            value.trim(), currentLang);
+                                            value.trim(), currentLang.code);
                                     _textController.clear();
                                     _inputFocusNode.unfocus();
                                   }
