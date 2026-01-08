@@ -47,3 +47,5 @@ app.*.map.json
 assets/.env
 
 
+assets/perfect_startup_funding.csv
+.gitignore
